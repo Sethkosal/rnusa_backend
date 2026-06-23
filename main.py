@@ -16,10 +16,14 @@ load_dotenv()
 
 app = FastAPI(title="T-Shirt Business API")
 
-# CORS — allow Next.js frontend to call this API
+# CORS — set ALLOWED_ORIGINS in .env as a comma-separated list, e.g.:
+# ALLOWED_ORIGINS=https://rnusa.com,https://www.rnusa.com
+_raw_origins = os.environ.get("ALLOWED_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+ALLOWED_ORIGINS = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten this to your domain in production
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -255,8 +259,13 @@ def save_upload(file: UploadFile) -> str:
     ext = file.filename.rsplit(".", 1)[-1].lower()
     filename = f"{uuid.uuid4().hex}.{ext}"
     path = os.path.join(UPLOAD_DIR, filename)
-    with open(path, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+    try:
+        with open(path, "wb") as f:
+            shutil.copyfileobj(file.file, f)
+    except Exception:
+        if os.path.exists(path):
+            os.remove(path)
+        raise HTTPException(status_code=500, detail="Failed to save uploaded file")
     return filename
 
 
