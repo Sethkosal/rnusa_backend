@@ -33,6 +33,7 @@ class Product(Base):
     image = Column(String, nullable=True)        # main image filename
     images = Column(Text, nullable=True)          # comma-separated additional images
     tags = Column(String, nullable=True)          # comma-separated tags
+    slug = Column(String, unique=True, nullable=True, index=True)  # URL-friendly identifier
     featured = Column(Boolean, default=False)
     active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)

@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 from typing import Optional, List
 from dotenv import load_dotenv
@@ -40,6 +41,34 @@ def startup():
 
 
 # ─────────────────────────────────────────
+# SLUG HELPERS
+# ─────────────────────────────────────────
+
+def _base_slug(name: str) -> str:
+    """Convert a product name to a URL-friendly slug."""
+    slug = name.lower()
+    slug = re.sub(r'[^a-z0-9\s-]', '', slug)
+    slug = re.sub(r'[\s]+', '-', slug.strip())
+    slug = re.sub(r'-+', '-', slug)
+    return slug.strip('-')
+
+
+def make_unique_slug(name: str, db: Session, exclude_id: int = None) -> str:
+    """Generate a unique slug, appending -2, -3 etc. if needed."""
+    base = _base_slug(name)
+    slug = base
+    counter = 2
+    while True:
+        q = db.query(Product).filter(Product.slug == slug)
+        if exclude_id:
+            q = q.filter(Product.id != exclude_id)
+        if not q.first():
+            return slug
+        slug = f"{base}-{counter}"
+        counter += 1
+
+
+# ─────────────────────────────────────────
 # PUBLIC ROUTES
 # ─────────────────────────────────────────
 
@@ -63,6 +92,18 @@ def get_products(
         query = query.filter(Product.featured == featured)
     products = query.order_by(Product.id.desc()).all()
     return [serialize_product(p) for p in products]
+
+
+@app.get("/api/products/slug/{slug}")
+def get_product_by_slug(slug: str, db: Session = Depends(get_db)):
+    """Look up a product by its URL slug."""
+    product = db.query(Product).filter(
+        Product.slug == slug,
+        Product.active == True
+    ).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return serialize_product(product)
 
 
 @app.get("/api/products/{product_id}")
@@ -150,6 +191,8 @@ async def admin_create_product(
         image=image_filename,
     )
     db.add(product)
+    db.flush()  # get product.id before commit
+    product.slug = make_unique_slug(name_en, db, exclude_id=product.id)
     db.commit()
     db.refresh(product)
     return serialize_product(product)
@@ -272,6 +315,7 @@ def save_upload(file: UploadFile) -> str:
 def serialize_product(p: Product) -> dict:
     return {
         "id": p.id,
+        "slug": p.slug,
         "name_en": p.name_en,
         "name_km": p.name_km,
         "description_en": p.description_en,
